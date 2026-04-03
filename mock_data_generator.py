@@ -128,7 +128,6 @@ class DatasetGenerator:
     
         result = df.copy()
         result.insert(0, "timestamp", timestamps)
-        print(result)
         return result
         
 if __name__ == "__main__":
