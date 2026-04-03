@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-
+import pandas_market_calendars as mcal
 
 SIGNAL_TYPES = ['sin', 'saw_tooth', 'damped_wave']
 PHASES = [0, np.pi / 2, np.pi, 3 * np.pi / 2]
@@ -84,6 +84,7 @@ class DatasetGenerator:
                 df = self.dataset_creator(signal)
                 if add_noise:
                     df = self.inject_noise(df)
+                df=self.add_time(df)
                 label = 'noisy' if add_noise else 'clean'
                 df.to_pickle(f'{folder}/{signal}_{label}.pkl')
 
@@ -96,3 +97,40 @@ class DatasetGenerator:
             'open':   signals[3],
             'volume': np.linspace(2, 100_000, self.df_len),
         })
+    
+    def add_time(self,df, interval="day", start="2024-01-01", end="2026-04-03", exchange="NYSE"):
+        """
+        Assigns fake market timestamps to a DataFrame.
+    
+        intervals: "day", "hour", "30min", "15min", "5min", "1min"
+        """
+        freq_map = {"day": None, "hour": "1h", "30min": "30min", "15min": "15min", "5min": "5min", "1min": "1min"}
+    
+        cal = mcal.get_calendar(exchange)
+        schedule = cal.schedule(start_date=start, end_date=end)
+        freq = freq_map[interval]
+    
+        if freq is None:
+            timestamps = pd.DatetimeIndex(schedule["market_open"].dt.tz_convert("America/New_York").values)
+        else:
+            bars = []
+            for _, row in schedule.iterrows():
+                open_  = row["market_open"].tz_convert("America/New_York")
+                close_ = row["market_close"].tz_convert("America/New_York")
+                session_bars = pd.date_range(open_, close_, freq=freq, tz="America/New_York")
+                bars.extend(session_bars[session_bars < close_].tolist())
+            timestamps = pd.DatetimeIndex(bars)
+    
+        # Cycle timestamps to match df length
+        n = len(df)
+        timestamps = timestamps.tolist()
+        timestamps = (timestamps * (n // len(timestamps) + 1))[:n]
+    
+        result = df.copy()
+        result.insert(0, "timestamp", timestamps)
+        print(result)
+        return result
+        
+if __name__ == "__main__":
+    generator = DatasetGenerator()
+    generator.create_basics('mock_data')
